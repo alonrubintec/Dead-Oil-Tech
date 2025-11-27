@@ -1,0 +1,106 @@
+using UnityEngine;
+using UnityEngine.UI;
+using System.Collections.Generic;
+
+public class PaletteManager : MonoBehaviour
+{
+    public static PaletteManager Instance { get; private set; }
+
+
+    [Header("World palettes")]
+    public List<PaletteSettings> worldPalettes = new(); 
+
+    [Header("UI palettes")]
+    public List<UIPaletteSettings> uiPalettes = new();          
+
+
+    private UIPaletteApplier uiApplier;                          
+
+    public enum Palette { Desert, Rose, Junker, Acid }
+
+    void Awake()
+    {
+        if (Instance && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+
+    void Start() => Apply(Palette.Desert);                    
+
+    public void SetPaletteDesert()  => Apply(Palette.Desert);
+    public void SetPaletteRose()    => Apply(Palette.Rose);
+    public void SetPaletteJunker()  => Apply(Palette.Junker);
+    public void SetPaletteAcid()    => Apply(Palette.Acid);
+
+    public void Apply(Palette p) => Apply((int)p);
+
+
+
+    private void Apply(int index)
+    {
+
+        if (index < 0 || index >= worldPalettes.Count) { Debug.LogWarning("Palette index out of range"); return; }
+        var wp = worldPalettes[index];
+
+        // skybox
+        if (wp.skybox)
+        {
+            RenderSettings.skybox = wp.skybox;
+            DynamicGI.UpdateEnvironment();                       
+        }
+
+        // material colour overrides
+        foreach (var co in wp.colours)
+        {
+            if (!co.target) continue;
+
+            Color col = co.useHDR ? co.hdrColor : co.color;      
+            co.target.SetColor(co.property, col);                
+        }
+
+        // ---------- UI ------------------------------------------------------
+        if (uiApplier && index < uiPalettes.Count)
+        {
+            uiApplier.palette = uiPalettes[index];
+            uiApplier.Apply();
+        }
+
+        DebugUtils.Log($"PaletteManager → applied {wp.name} (world + UI)");
+    }
+}
+
+
+using UnityEngine;
+using System.Collections.Generic;
+
+[CreateAssetMenu(menuName = "Dead Oil/Palette")]
+public class PaletteSettings : ScriptableObject
+{
+    public Material skybox;
+
+    [System.Serializable]
+    public struct ColorOverride
+    {
+        public Material target;
+        public string   property;
+
+        public bool     useHDR;                     // toggle
+
+        public Color    color;                      // standard
+        [ColorUsage(showAlpha: true, hdr: true)]
+        public Color    hdrColor;                   // HDR
+    }
+
+    public List<ColorOverride> colours = new();
+}
+
+using UnityEngine;
+
+[CreateAssetMenu(menuName = "Dead Oil/UI Palette")]
+public class UIPaletteSettings : ScriptableObject
+{
+    public Color colorA = Color.white;   
+    public Color colorB = Color.black;   
+    public Color colorC = Color.black;   
+    public Color colorD = Color.black;   
+}
