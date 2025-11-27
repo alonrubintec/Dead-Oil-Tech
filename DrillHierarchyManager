@@ -15,12 +15,8 @@ using UnityEngine;
 /// 3. Methods to query hierarchy for any state recursively.
 /// 4. Safe removal with optional descendant cleanup.
 /// 5. Can be used to propagate visual/material/behavior changes across hierarchy.
-///
-/// Example usage:
-/// - Call InitializeHierarchy(parent) when spawning a new drill.
-/// - Use AnyAncestor or AnyDescendant for recursive checks.
-/// - GetSiblings or GetUncles for lateral branching logic.
 /// </summary>
+
 public class DrillHierarchyManager : MonoBehaviour
 {
     [Header("Hierarchy References")]
@@ -30,10 +26,6 @@ public class DrillHierarchyManager : MonoBehaviour
     [Header("Optional Ancestor Tracking")]
     public List<DrillHierarchyManager> ancestors = new List<DrillHierarchyManager>(); // All ancestors up to root
 
-    /// <summary>
-    /// Initializes this drill's hierarchy and sets up recursive ancestry.
-    /// </summary>
-    /// <param name="newParent">Parent drill (null if root)</param>
     public void InitializeHierarchy(DrillHierarchyManager newParent)
     {
         parent = newParent;
@@ -51,10 +43,6 @@ public class DrillHierarchyManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Recursively retrieves all descendants (children, grandchildren, etc.).
-    /// Demonstrates downward recursive stepping.
-    /// </summary>
     public List<DrillHierarchyManager> GetAllDescendants()
     {
         List<DrillHierarchyManager> result = new List<DrillHierarchyManager>();
@@ -66,10 +54,6 @@ public class DrillHierarchyManager : MonoBehaviour
         return result;
     }
 
-    /// <summary>
-    /// Checks recursively if any ancestor satisfies a condition.
-    /// Demonstrates upward recursive stepping.
-    /// </summary>
     public bool AnyAncestor(System.Predicate<DrillHierarchyManager> predicate)
     {
         foreach (var anc in ancestors)
@@ -80,9 +64,6 @@ public class DrillHierarchyManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Returns siblings (parent's children excluding self)
-    /// </summary>
     public List<DrillHierarchyManager> GetSiblings()
     {
         if (parent == null) return new List<DrillHierarchyManager>();
@@ -92,19 +73,12 @@ public class DrillHierarchyManager : MonoBehaviour
         return siblings;
     }
 
-    /// <summary>
-    /// Returns uncles/aunts (parent's siblings)
-    /// </summary>
     public List<DrillHierarchyManager> GetUncles()
     {
         if (parent == null) return new List<DrillHierarchyManager>();
         return parent.GetSiblings();
     }
 
-    /// <summary>
-    /// Recursively checks if any descendant satisfies a condition.
-    /// Demonstrates downward recursive stepping for behavior propagation.
-    /// </summary>
     public bool AnyDescendant(System.Predicate<DrillHierarchyManager> predicate)
     {
         foreach (var child in children)
@@ -115,11 +89,6 @@ public class DrillHierarchyManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>
-    /// Apply a recursive action to self and all descendants.
-    /// Example: changing material, activating components, or state propagation.
-    /// Demonstrates recursive stepping for action propagation.
-    /// </summary>
     public void ApplyToSelfAndDescendants(System.Action<DrillHierarchyManager> action)
     {
         action?.Invoke(this);
@@ -129,9 +98,6 @@ public class DrillHierarchyManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Safely removes this drill from the hierarchy, optionally destroying all descendants.
-    /// </summary>
     public void RemoveFromHierarchy(bool destroyDescendants = false)
     {
         if (parent != null)
