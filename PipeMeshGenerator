@@ -1,0 +1,277 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class PipeMeshGenerator : MonoBehaviour
+{
+    public OilStatsPreset oilStatsPreset;
+    public UpgradesStats upgradesStats;
+    public List<Vector3> points;
+    public float elbowRadius = 0.5f;
+    [Range(3, 32)]
+    public int pipeSegments = 8;
+    [Range(3, 32)]
+    public int elbowSegments = 8;
+    public bool generateElbows = true;
+    public float colinearThreshold = 0.001f;
+
+    private Material instancePipeMaterial;
+
+    [Tooltip("Number of times the texture repeats around the circumference.")]
+    public float uTiling = 1f;
+
+    [Tooltip("Number of times the texture repeats along the length of the pipe.")]
+    public float vTiling = 1f;
+
+    private Vector3 prevXAxis;
+    private bool havePrevXAxis = false;
+    public bool isGuide = false;
+
+    private List<Vector2> uvs;
+    private MeshFilter meshFilter;
+    private MeshRenderer meshRenderer;
+    private bool initialSetupComplete = false;
+
+    private void Awake()
+    {
+        upgradesStats = UpgradesStats.Instance;
+    }
+
+    public void RenderPipe()
+    {
+        if (points.Count < 2)
+            throw new System.Exception("Cannot render a pipe with fewer than 2 points");
+
+        if (!initialSetupComplete)
+        {
+            meshFilter = GetComponent<MeshFilter>() ?? gameObject.AddComponent<MeshFilter>();
+            meshRenderer = GetComponent<MeshRenderer>() ?? gameObject.AddComponent<MeshRenderer>();
+
+            instancePipeMaterial = new Material(isGuide ?
+                oilStatsPreset.pipeMaterialGuide :
+                oilStatsPreset.pipeMaterial);
+
+            meshRenderer.materials = new Material[1] { instancePipeMaterial };
+
+            initialSetupComplete = true;
+        }
+
+        RemoveColinearPoints();
+        Mesh mesh = GenerateMesh();
+        meshFilter.mesh = mesh;
+    }
+
+    Mesh GenerateMesh()
+    {
+        Mesh m = new Mesh();
+        m.name = "UnityPlumber Pipe";
+        List<Vector3> vertices = new List<Vector3>();
+        List<int> triangles = new List<int>();
+        List<Vector3> normals = new List<Vector3>();
+        uvs = new List<Vector2>();
+
+        List<float> segmentLengths = new List<float>();
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            float segmentLength = Vector3.Distance(points[i], points[i + 1]);
+            segmentLengths.Add(segmentLength);
+        }
+
+        float totalLength = 0f;
+        foreach (float len in segmentLengths)
+            totalLength += len;
+
+        List<float> cumulativeLengths = new List<float>();
+        cumulativeLengths.Add(0f);
+        for (int i = 0; i < segmentLengths.Count; i++)
+            cumulativeLengths.Add(cumulativeLengths[i] + segmentLengths[i]);
+
+        for (int i = 0; i < points.Count - 1; i++)
+        {
+            Vector3 initialPoint = points[i];
+            Vector3 endPoint = points[i + 1];
+            Vector3 direction = (endPoint - initialPoint).normalized;
+
+            if (i > 0 && generateElbows)
+                initialPoint += direction * elbowRadius;
+
+            if (i < points.Count - 2 && generateElbows)
+                endPoint -= direction * elbowRadius;
+
+            GenerateCircleAtPoint(vertices, normals, uvs, initialPoint, direction, cumulativeLengths[i], totalLength);
+            GenerateCircleAtPoint(vertices, normals, uvs, endPoint, direction, cumulativeLengths[i + 1], totalLength);
+            MakeCylinderTriangles(triangles, i);
+        }
+
+        if (generateElbows)
+        {
+            for (int i = 0; i < points.Count - 2; i++)
+            {
+                Vector3 point1 = points[i];
+                Vector3 point2 = points[i + 1];
+                Vector3 point3 = points[i + 2];
+                GenerateElbow(i, vertices, normals, triangles, uvs, point1, point2, point3, cumulativeLengths[i + 1], totalLength);
+            }
+        }
+
+        m.SetVertices(vertices);
+        m.SetTriangles(triangles, 0);
+        m.SetNormals(normals);
+        m.SetUVs(0, uvs);
+        return m;
+    }
+
+    void RemoveColinearPoints()
+    {
+        List<int> pointsToRemove = new List<int>();
+        for (int i = 0; i < points.Count - 2; i++)
+        {
+            Vector3 point1 = points[i];
+            Vector3 point2 = points[i + 1];
+            Vector3 point3 = points[i + 2];
+
+            Vector3 dir1 = point2 - point1;
+            Vector3 dir2 = point3 - point2;
+
+            if (Vector3.Distance(dir1.normalized, dir2.normalized) < colinearThreshold)
+                pointsToRemove.Add(i + 1);
+        }
+
+        pointsToRemove.Reverse();
+        foreach (int idx in pointsToRemove)
+            points.RemoveAt(idx);
+    }
+
+    // 'direction' is the normal to the plane that contains the circle
+    void GenerateCircleAtPoint(List<Vector3> vertices, List<Vector3> normals, List<Vector2> uvs, Vector3 center, Vector3 direction, float currentLength, float totalLength)
+    {
+        float twoPi = Mathf.PI * 2;
+        float radiansPerSegment = twoPi / pipeSegments;
+
+        if (!havePrevXAxis)
+        {
+            Vector3 arbitrary = (Mathf.Abs(direction.y) < 0.99f) ? Vector3.up : Vector3.forward;
+            prevXAxis = Vector3.Cross(direction, arbitrary).normalized;
+            havePrevXAxis = true;
+        }
+        else
+        {
+            prevXAxis = Vector3.ProjectOnPlane(prevXAxis, direction).normalized;
+            if (prevXAxis.sqrMagnitude < 0.0001f)
+            {
+                Vector3 arbitrary = (Mathf.Abs(direction.y) < 0.99f) ? Vector3.up : Vector3.forward;
+                prevXAxis = Vector3.Cross(direction, arbitrary).normalized;
+            }
+        }
+
+        Vector3 xAxis = prevXAxis;
+        Vector3 yAxis = Vector3.Cross(direction, xAxis).normalized;
+
+        for (int i = 0; i < pipeSegments; i++)
+        {
+            float angle = radiansPerSegment * i;
+            Vector3 currentVertex =
+                center +
+                (upgradesStats.currentPipesSize * Mathf.Cos(angle) * xAxis) +
+                (upgradesStats.currentPipesSize * Mathf.Sin(angle) * yAxis);
+            vertices.Add(currentVertex);
+            normals.Add((currentVertex - center).normalized);
+
+            float u = (float)i / pipeSegments * uTiling;
+            float v = (currentLength / totalLength) * vTiling;
+
+            uvs.Add(new Vector2(u, v));
+        }
+    }
+
+    void MakeCylinderTriangles(List<int> triangles, int segmentIdx)
+    {
+        int offset = segmentIdx * pipeSegments * 2;
+        for (int i = 0; i < pipeSegments; i++)
+        {
+            triangles.Add(offset + (i + 1) % pipeSegments);
+            triangles.Add(offset + i + pipeSegments);
+            triangles.Add(offset + i);
+
+            triangles.Add(offset + (i + 1) % pipeSegments);
+            triangles.Add(offset + (i + 1) % pipeSegments + pipeSegments);
+            triangles.Add(offset + i + pipeSegments);
+        }
+    }
+
+    // offset calculation connects cylinder vertices with elbow vertices
+    void MakeElbowTriangles(List<Vector3> vertices, List<int> triangles, int segmentIdx, int elbowIdx)
+    {
+        int offset = (points.Count - 1) * pipeSegments * 2;
+        offset += elbowIdx * (elbowSegments + 1) * pipeSegments;
+        offset += segmentIdx * pipeSegments;
+
+        Dictionary<int, int> mapping = new Dictionary<int, int>();
+        for (int i = 0; i < pipeSegments; i++)
+            mapping.Add(i, offset + i);
+
+        for (int i = 0; i < pipeSegments; i++)
+        {
+            triangles.Add(mapping[i]);
+            triangles.Add(offset + i - pipeSegments);
+            triangles.Add(mapping[(i + 1) % pipeSegments]);
+
+            triangles.Add(offset + i - pipeSegments);
+            triangles.Add(offset + (i + 1) % pipeSegments - pipeSegments);
+            triangles.Add(mapping[(i + 1) % pipeSegments]);
+        }
+    }
+
+    // Generates the torus/arc (elbow) connecting two pipe segments
+    void GenerateElbow(int index, List<Vector3> vertices, List<Vector3> normals, List<int> triangles, List<Vector2> uvs, Vector3 point1, Vector3 point2, Vector3 point3, float cumulativeLength, float totalLength)
+    {
+        Vector3 offset1 = (point2 - point1).normalized * elbowRadius;
+        Vector3 offset2 = (point3 - point2).normalized * elbowRadius;
+        Vector3 startPoint = point2 - offset1;
+        Vector3 endPoint = point2 + offset2;
+
+        Vector3 perpendicularToBoth = Vector3.Cross(offset1, offset2);
+        Vector3 startDir = Vector3.Cross(perpendicularToBoth, offset1).normalized;
+        Vector3 endDir = Vector3.Cross(perpendicularToBoth, offset2).normalized;
+
+        Vector3 torusCenter1;
+        Vector3 torusCenter2;
+        Math3D.ClosestPointsOnTwoLines(out torusCenter1, out torusCenter2, startPoint, startDir, endPoint, endDir);
+        Vector3 torusCenter = 0.5f * (torusCenter1 + torusCenter2);
+
+        float actualTorusRadius = (torusCenter - startPoint).magnitude;
+
+        float angle = Vector3.Angle(startPoint - torusCenter, endPoint - torusCenter);
+        float radiansPerSegment = (angle * Mathf.Deg2Rad) / elbowSegments;
+        Vector3 lastPoint = startPoint;
+
+        for (int i = 0; i <= elbowSegments; i++)
+        {
+            Vector3 xAxis = (startPoint - torusCenter).normalized;
+            Vector3 yAxis = (endPoint - torusCenter).normalized;
+            Vector3.OrthoNormalize(ref xAxis, ref yAxis);
+
+            Vector3 circleCenter = torusCenter +
+                (actualTorusRadius * Mathf.Cos(radiansPerSegment * i) * xAxis) +
+                (actualTorusRadius * Mathf.Sin(radiansPerSegment * i) * yAxis);
+
+            Vector3 directionVec = circleCenter - lastPoint;
+            lastPoint = circleCenter;
+
+            if (i == elbowSegments)
+                directionVec = endPoint - point2;
+            else if (i == 0)
+                directionVec = point2 - startPoint;
+
+            float elbowSegmentLength = Vector3.Distance(circleCenter, lastPoint);
+            float v = (cumulativeLength / totalLength) * vTiling;
+
+            GenerateCircleAtPoint(vertices, normals, uvs, circleCenter, directionVec.normalized, cumulativeLength, totalLength);
+
+            if (i > 0)
+                MakeElbowTriangles(vertices, triangles, i, index);
+
+            cumulativeLength += elbowSegmentLength;
+        }
+    }
+}
