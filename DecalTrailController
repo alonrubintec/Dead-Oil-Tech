@@ -1,0 +1,90 @@
+using UnityEngine;
+
+public class DecalTrailController : MonoBehaviour
+{
+    public GameObject decalPrefab;
+    public int poolSize = 10;
+    public float decalSpacing = 1f;
+    public Vector3 startRotation = Vector3.zero;
+    public float moveBackSpeed = 2f;
+    public float decalSpawnRate = 0.5f;
+
+    private GameObject[] decalPool;
+    private Vector3 lastPosition;
+    private int currentIndex = 0;
+    private float timeSinceLastSpawn = 0f;
+    private bool isInitialized = false;
+
+    public GameObject decalParent;
+
+    // Initialize the decal system
+    public void InitializeDecalSystem()
+    {
+        decalParent = new GameObject("TracksParent");
+
+        decalPool = new GameObject[poolSize];
+        for (int i = 0; i < poolSize; i++)
+        {
+            decalPool[i] = Instantiate(decalPrefab, transform.position, Quaternion.Euler(startRotation));
+            decalPool[i].transform.SetParent(decalParent.transform);
+            decalPool[i].SetActive(false);
+        }
+
+        lastPosition = transform.position;
+        currentIndex = 0;
+        timeSinceLastSpawn = 0f;
+        isInitialized = true;
+    }
+
+    // Clear all decals and reset the system
+    public void ClearDecals()
+    {
+        if (decalParent == null)
+            return;
+
+        Destroy(decalParent);
+
+        for (int i = 0; i < poolSize; i++)
+        {
+            if (decalPool[i] != null)
+                Destroy(decalPool[i]);
+        }
+
+        decalPool = null;
+        currentIndex = 0;
+        timeSinceLastSpawn = 0f;
+        isInitialized = false;
+    }
+
+    void Update()
+    {
+        if (!isInitialized) return;
+
+        timeSinceLastSpawn += Time.deltaTime;
+
+        if (timeSinceLastSpawn >= decalSpawnRate)
+        {
+            GameObject decal = decalPool[currentIndex];
+            decal.transform.position = lastPosition;
+
+            if (!decal.activeSelf)
+            {
+                decal.transform.rotation = Quaternion.Euler(startRotation);
+            }
+
+            decal.SetActive(true);
+
+            currentIndex = (currentIndex + 1) % poolSize;
+            lastPosition = transform.position;
+            timeSinceLastSpawn = 0f;
+        }
+
+        for (int i = 0; i < poolSize; i++)
+        {
+            if (decalPool[i].activeSelf)
+            {
+                decalPool[i].transform.position -= new Vector3(moveBackSpeed * Time.deltaTime, 0, 0);
+            }
+        }
+    }
+}
