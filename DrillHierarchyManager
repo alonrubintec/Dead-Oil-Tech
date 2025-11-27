@@ -1,0 +1,153 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// DrillHierarchyManager
+/// ----------------------------------
+/// Lightweight hierarchy manager for drills or branching objects.
+/// Fully supports recursive relationships and behavior propagation.
+///
+/// Features:
+/// 1. Tracks parent, children, and all ancestors.
+/// 2. Supports recursive stepping:
+///    - **Upwards:** check parent, grandparent, uncles, etc.
+///    - **Downwards:** traverse children, grandchildren, nieces/nephews.
+/// 3. Methods to query hierarchy for any state recursively.
+/// 4. Safe removal with optional descendant cleanup.
+/// 5. Can be used to propagate visual/material/behavior changes across hierarchy.
+///
+/// Example usage:
+/// - Call InitializeHierarchy(parent) when spawning a new drill.
+/// - Use AnyAncestor or AnyDescendant for recursive checks.
+/// - GetSiblings or GetUncles for lateral branching logic.
+/// </summary>
+public class DrillHierarchyManager : MonoBehaviour
+{
+    [Header("Hierarchy References")]
+    public DrillHierarchyManager parent;          // Immediate parent
+    public List<DrillHierarchyManager> children = new List<DrillHierarchyManager>(); // Direct children
+
+    [Header("Optional Ancestor Tracking")]
+    public List<DrillHierarchyManager> ancestors = new List<DrillHierarchyManager>(); // All ancestors up to root
+
+    /// <summary>
+    /// Initializes this drill's hierarchy and sets up recursive ancestry.
+    /// </summary>
+    /// <param name="newParent">Parent drill (null if root)</param>
+    public void InitializeHierarchy(DrillHierarchyManager newParent)
+    {
+        parent = newParent;
+
+        if (parent != null && !parent.children.Contains(this))
+            parent.children.Add(this);
+
+        // Update ancestors recursively
+        ancestors.Clear();
+        DrillHierarchyManager current = parent;
+        while (current != null)
+        {
+            ancestors.Add(current);
+            current = current.parent;
+        }
+    }
+
+    /// <summary>
+    /// Recursively retrieves all descendants (children, grandchildren, etc.).
+    /// Demonstrates downward recursive stepping.
+    /// </summary>
+    public List<DrillHierarchyManager> GetAllDescendants()
+    {
+        List<DrillHierarchyManager> result = new List<DrillHierarchyManager>();
+        foreach (var child in children)
+        {
+            result.Add(child);
+            result.AddRange(child.GetAllDescendants()); // Recursive step
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Checks recursively if any ancestor satisfies a condition.
+    /// Demonstrates upward recursive stepping.
+    /// </summary>
+    public bool AnyAncestor(System.Predicate<DrillHierarchyManager> predicate)
+    {
+        foreach (var anc in ancestors)
+        {
+            if (predicate(anc))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns siblings (parent's children excluding self)
+    /// </summary>
+    public List<DrillHierarchyManager> GetSiblings()
+    {
+        if (parent == null) return new List<DrillHierarchyManager>();
+
+        List<DrillHierarchyManager> siblings = new List<DrillHierarchyManager>(parent.children);
+        siblings.Remove(this);
+        return siblings;
+    }
+
+    /// <summary>
+    /// Returns uncles/aunts (parent's siblings)
+    /// </summary>
+    public List<DrillHierarchyManager> GetUncles()
+    {
+        if (parent == null) return new List<DrillHierarchyManager>();
+        return parent.GetSiblings();
+    }
+
+    /// <summary>
+    /// Recursively checks if any descendant satisfies a condition.
+    /// Demonstrates downward recursive stepping for behavior propagation.
+    /// </summary>
+    public bool AnyDescendant(System.Predicate<DrillHierarchyManager> predicate)
+    {
+        foreach (var child in children)
+        {
+            if (predicate(child) || child.AnyDescendant(predicate))
+                return true; // Recursive step
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Apply a recursive action to self and all descendants.
+    /// Example: changing material, activating components, or state propagation.
+    /// Demonstrates recursive stepping for action propagation.
+    /// </summary>
+    public void ApplyToSelfAndDescendants(System.Action<DrillHierarchyManager> action)
+    {
+        action?.Invoke(this);
+        foreach (var child in children)
+        {
+            child.ApplyToSelfAndDescendants(action); // Recursive step
+        }
+    }
+
+    /// <summary>
+    /// Safely removes this drill from the hierarchy, optionally destroying all descendants.
+    /// </summary>
+    public void RemoveFromHierarchy(bool destroyDescendants = false)
+    {
+        if (parent != null)
+            parent.children.Remove(this);
+
+        if (destroyDescendants)
+        {
+            foreach (var child in children)
+            {
+                child.RemoveFromHierarchy(true);
+                Destroy(child.gameObject);
+            }
+        }
+
+        children.Clear();
+        ancestors.Clear();
+        parent = null;
+    }
+}
