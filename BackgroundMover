@@ -1,0 +1,256 @@
+using UnityEngine;
+using System.Collections;
+
+public class BackgroundMover : MonoBehaviour
+{
+    [Header("Roads Settings")]
+    public float roadSpeedMultiplier = 400f;
+    public float roadDistance = 5000f;
+    public GameObject road1;
+    public GameObject road2;
+
+
+    [Header("Foreground Settings")]
+    public float foregroundSpeedMultiplier = 400f;
+    public float foregroundDistance = 2000f;
+    public GameObject[] foregrounds;
+
+    [Header("Background Settings")]
+    public float backgroundSpeedMultiplier = 200f;
+    public float backgroundDistance = 3000f;
+    public GameObject[] backgrounds;
+
+    public float SpeedMultiplier = 1.0f;
+    public float currentSpeed = 0f;
+    private Coroutine moveCoroutine;
+
+    private Vector3[] initialForegroundPositions;
+    private Vector3[] initialBackgroundPositions;
+    private Vector3 initialRoad1Position;
+    private Vector3 initialRoad2Position;
+
+    private StartDrivingTruck startDrivingTruck;
+
+    private void Start()
+    {
+        startDrivingTruck = FindObjectOfType<StartDrivingTruck>();
+
+        // Store initial positions for foreground segments.
+        if (foregrounds != null && foregrounds.Length > 0)
+        {
+            initialForegroundPositions = new Vector3[foregrounds.Length];
+            for (int i = 0; i < foregrounds.Length; i++)
+            {
+                if (foregrounds[i] != null)
+                    initialForegroundPositions[i] = foregrounds[i].transform.position;
+            }
+        }
+
+        // Store initial positions for background segments.
+        if (backgrounds != null && backgrounds.Length > 0)
+        {
+            initialBackgroundPositions = new Vector3[backgrounds.Length];
+            for (int i = 0; i < backgrounds.Length; i++)
+            {
+                if (backgrounds[i] != null)
+                    initialBackgroundPositions[i] = backgrounds[i].transform.position;
+            }
+        }
+
+        if (road1 != null)
+            initialRoad1Position = road1.transform.position;
+        if (road2 != null)
+            initialRoad2Position = road2.transform.position;
+    }
+
+    private void Update()
+    {
+        currentSpeed = startDrivingTruck.currentSpeed;
+    }
+
+    public void StartMovement()
+    {
+        if (moveCoroutine != null)
+            StopCoroutine(moveCoroutine);
+        moveCoroutine = StartCoroutine(MoveBackground());
+    }
+
+    public void StopMovement()
+    {
+        if (moveCoroutine != null)
+            StopCoroutine(moveCoroutine);
+    }
+
+    public void AccelerateBackground(float targetSpeed, float duration)
+    {
+        if (moveCoroutine != null)
+            StopCoroutine(moveCoroutine);
+        moveCoroutine = StartCoroutine(ChangeSpeedOverTime(currentSpeed, targetSpeed, duration));
+    }
+
+    public void DecelerateBackground(float targetSpeed, float duration)
+    {
+        if (moveCoroutine != null)
+            StopCoroutine(moveCoroutine);
+        moveCoroutine = StartCoroutine(ChangeSpeedOverTime(currentSpeed, targetSpeed, duration));
+    }
+
+    public void ResetMovement()
+    {
+        StopMovement();
+        currentSpeed = 0f;
+        ResetBackgrounds();
+    }
+
+    private IEnumerator MoveBackground()
+    {
+        while (true)
+        {
+            MoveForegroundsAbsolute(foregroundSpeedMultiplier * SpeedMultiplier);
+            MoveBackgroundsAbsolute(backgroundSpeedMultiplier * SpeedMultiplier);
+            MoveRoadsAbsolute(roadSpeedMultiplier * SpeedMultiplier);
+            yield return null;
+        }
+    }
+
+    private IEnumerator ChangeSpeedOverTime(float startSpeed, float endSpeed, float duration)
+    {
+        float elapsedTime = 0f;
+        while (elapsedTime < duration)
+        {
+            elapsedTime += Time.deltaTime;
+            currentSpeed = Mathf.Lerp(startSpeed, endSpeed, elapsedTime / duration);
+            MoveForegroundsAbsolute(currentSpeed * foregroundSpeedMultiplier * SpeedMultiplier);
+            MoveBackgroundsAbsolute(currentSpeed * backgroundSpeedMultiplier * SpeedMultiplier);
+            MoveRoadsAbsolute(currentSpeed * roadSpeedMultiplier * SpeedMultiplier);
+            yield return null;
+        }
+        currentSpeed = endSpeed;
+    }
+
+    private void ResetBackgrounds()
+    {
+        if (foregrounds != null && initialForegroundPositions != null)
+        {
+            for (int i = 0; i < foregrounds.Length; i++)
+            {
+                if (foregrounds[i] != null)
+                    foregrounds[i].transform.position = initialForegroundPositions[i];
+            }
+        }
+        if (backgrounds != null && initialBackgroundPositions != null)
+        {
+            for (int i = 0; i < backgrounds.Length; i++)
+            {
+                if (backgrounds[i] != null)
+                    backgrounds[i].transform.position = initialBackgroundPositions[i];
+            }
+        }
+        if (road1 != null)
+            road1.transform.position = initialRoad1Position;
+        if (road2 != null)
+            road2.transform.position = initialRoad2Position;
+    }
+
+    private void MoveObjectAbsolute(GameObject obj, float speedMultiplier)
+    {
+        if (obj != null)
+        {
+            Vector3 pos = obj.transform.position;
+            float movementSpeed = currentSpeed * speedMultiplier * Time.deltaTime;
+            pos.x += movementSpeed;
+            obj.transform.position = pos;
+        }
+    }
+
+    private void MoveRoadsAbsolute(float speedMultiplier)
+    {
+        MoveRoadLocal(road1, speedMultiplier);
+        MoveRoadLocal(road2, speedMultiplier);
+    }
+
+
+    private void MoveRoadLocal(GameObject road, float speedMultiplier)
+    {
+        if (road != null)
+        {
+            float movementSpeed = currentSpeed * speedMultiplier * Time.deltaTime;
+            road.transform.Translate(Vector3.right * movementSpeed, Space.Self);
+            Vector3 pos = road.transform.position;
+    
+            if (pos.x >= roadDistance)
+            {
+                pos.x -= roadDistance * 2;
+            }
+            else if (pos.x <= -roadDistance)
+            {
+                pos.x += roadDistance * 2;
+            }
+            pos.z = 0;
+        
+            road.transform.position = pos;
+        }
+    }
+
+    private void MoveForegroundsAbsolute(float speedMultiplier)
+    {
+        if (foregrounds == null)
+            return;
+
+        foreach (GameObject fg in foregrounds)
+        {
+            if (fg != null)
+            {
+                Vector3 pos = fg.transform.position;
+                float movementSpeed = currentSpeed * speedMultiplier * Time.deltaTime;
+                pos.x += movementSpeed;
+
+                if (pos.x >= foregroundDistance)
+                {
+                    pos.x -= foregroundDistance * 2;
+                }
+                else if (pos.x <= -foregroundDistance)
+                {
+                    pos.x += foregroundDistance * 2;
+                }
+                fg.transform.position = pos;
+            }
+        }
+    }
+
+    private void MoveBackgroundsAbsolute(float speedMultiplier)
+    {
+        if (backgrounds == null)
+            return;
+
+        foreach (GameObject bg in backgrounds)
+        {
+            if (bg != null)
+            {
+                Vector3 pos = bg.transform.position;
+                float movementSpeed = currentSpeed * speedMultiplier * Time.deltaTime;
+                pos.x += movementSpeed;
+
+                if (pos.x >= backgroundDistance)
+                {
+                    pos.x -= backgroundDistance * 2;
+                }
+                else if (pos.x <= -backgroundDistance)
+                {
+                    pos.x += backgroundDistance * 2;
+                }
+                bg.transform.position = pos;
+            }
+        }
+    }
+
+    private IEnumerator WaitAndSwitchIfXGreaterThan(GameObject road, GameObject regularRoad, GameObject snowRoad, float threshold)
+    {
+        while (road.transform.position.x < threshold)
+        {
+            yield return null;
+        }
+        regularRoad.SetActive(false);
+        snowRoad.SetActive(true);
+    }
+}
